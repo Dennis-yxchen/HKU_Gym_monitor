@@ -479,22 +479,50 @@ class FitnessScheduleMonitor:
 
     def _monitor_worker(self):
         while self.is_monitoring.is_set():
-            logging.info("Monitor thread: Checking for updates...")
-            data = self._fetch_and_parse()
-            if data:
-                self.root.after(0, self._update_gui, data)
-                self.root.after(0, lambda: self._update_status(f"Monitoring... Last checked: {datetime.now().strftime('%H:%M:%S')}"))
-                flat_data = {slot['id']: slot['status'] for venue in data.values() for slot in venue}
-                for slot_id in list(self.selected_slots):
-                    prev_status = self.previous_statuses.get(slot_id, 'N/A')
-                    new_status = flat_data.get(slot_id, 'N/A')
-                    if prev_status.upper() == 'FULL' and new_status.upper() != 'FULL' and new_status != 'N/A':
-                        logging.info(f"CHANGE DETECTED! Slot {slot_id} is now available ({new_status}).")
-                        self.root.after(0, self._show_alert, slot_id)
-                    self.previous_statuses[slot_id] = new_status
-            for _ in range(REFRESH_INTERVAL_SECONDS):
-                if not self.is_monitoring.is_set(): break
-                time.sleep(1)
+            try:  # 【!! 新增 !!】 在循环开始时添加 try
+                logging.info("Monitor thread: Checking for updates...")
+                data = self._fetch_and_parse()
+                
+                if data:
+                    self.root.after(0, self._update_gui, data)
+                    self.root.after(0, lambda: self._update_status(f"Monitoring... Last checked: {datetime.now().strftime('%H:%M:%S')}"))
+                    
+                    flat_data = {slot['id']: slot['status'] for venue in data.values() for slot in venue}
+                    
+                    # 使用 list() 来创建一个快照，防止在迭代时被主线程修改 (你已经这么做了，很好)
+                    for slot_id in list(self.selected_slots): 
+                        prev_status = self.previous_statuses.get(slot_id, 'N/A')
+                        new_status = flat_data.get(slot_id, 'N/A')
+                        
+                        if prev_status.upper() == 'FULL' and new_status.upper() != 'FULL' and new_status != 'N/A':
+                            logging.info(f"CHANGE DETECTED! Slot {slot_id} is now available ({new_status}).")
+                            self.root.after(0, self._show_alert, slot_id)
+                        
+                        # 在两个线程都在访问它之前，确保 previous_statuses 的更新是安全的
+                        # (虽然在此特定情况下风险较低，但最佳实践是使用锁)
+                        self.previous_statuses[slot_id] = new_status
+                
+                # 如果 data 为 None (例如 _fetch_and_parse 捕获到了错误)
+                # else:
+                #    logging.warning("Monitor thread: No data received, skipping check cycle.")
+            
+            except Exception as e: # 【!! 新增 !!】 捕获所有可能的异常
+                logging.error(f"Unhandled exception in monitor worker: {e}", exc_info=True)
+                # 发生错误时，也在UI上显示，这样用户就知道出问题了
+                try:
+                    self.root.after(0, lambda: self._update_status(f"Error occurred: {e}. Retrying...", "red"))
+                except Exception as e_gui:
+                    logging.error(f"Failed to update GUI with error status: {e_gui}")
+                # 即使出错，也要继续等待，而不是让循环立即重试导致刷屏
+            
+            finally: # 【!! 新增 !!】 确保等待逻辑总能执行
+                # 将等待逻辑移出 try 块，确保无论成功还是失败都会等待
+                for _ in range(REFRESH_INTERVAL_SECONDS):
+                    if not self.is_monitoring.is_set(): 
+                        break
+                    time.sleep(1)
+
+        logging.info("Monitor worker thread has gracefully stopped.")
 
     def _send_email_alert(self, slot_id):
         if not self.email_enabled: return
