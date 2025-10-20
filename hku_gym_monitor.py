@@ -14,8 +14,10 @@ from email.mime.text import MIMEText
 from email.header import Header
 from email.utils import formataddr
 from pathlib import Path
-from PIL import ImageTk, Image # <--- 在这里添加这一行
+from PIL import ImageTk, Image 
 import random
+from plyer import notification  # 【!! 新增 !!】 导入 plyer 库
+
 # --- Configuration ---
 URL = "https://fcbooking.cse.hku.hk/"
 REFRESH_INTERVAL_SECONDS = 60
@@ -76,8 +78,9 @@ class TimedAlert(tk.Toplevel):
 
         self._start_countdown()
 
+        # 【!! 修改 !!】 注释掉了 grab_set，防止它在弹窗被遮挡时冻结主窗口
         # 3. Defer grab_set to prevent the main window from freezing on some OS.
-        self.after(500, self.grab_set)
+        # self.after(500, self.grab_set) 
 
         # 4. (Recommended) After 1 second, turn off the 'topmost' attribute.
         # The window will still be modal and on top of the parent app,
@@ -416,17 +419,36 @@ class FitnessScheduleMonitor:
 
         # 同样检查 status_label，因为 _update_status 会用到它
         if hasattr(self, 'status_label'):
-            self._update_status("Monitoring stopped.")
+            self.status_label.config(text="Monitoring stopped.")
             
         logging.info("Monitoring has been stopped by the user.")
 
+    # 【!! 修改 !!】 更新了 _show_alert 方法
     def _show_alert(self, slot_id):
         if slot_id in self.active_alerts: return
         self.active_alerts.add(slot_id)
+        
         if self.email_enabled:
             email_thread = threading.Thread(target=self._send_email_alert, args=(slot_id,), daemon=True)
             email_thread.start()
+            
         message = f"A spot has opened up for:\n\n{slot_id.replace('|', ' - ')}"
+
+        # --- 【!! 新增 !!】 发送系统通知 ---
+        try:
+            notification.notify(
+                title='Slot Available!',
+                message=message,
+                app_name='HKU Fitness Monitor',
+                timeout=15  # 通知显示 15 秒
+            )
+            logging.info(f"System notification sent for {slot_id}")
+        except Exception as e:
+            # 即便系统通知失败，日志记录警告，但程序应继续弹出Tkinter窗口
+            logging.warning(f"Failed to send system notification: {e}")
+        # ---------------------------------
+        
+        # 仍然显示 Tkinter 弹窗，但它现在不会冻结主窗口了
         TimedAlert(
             parent=self.root,
             title="Slot Available!",
@@ -435,7 +457,7 @@ class FitnessScheduleMonitor:
             on_acknowledge_callback=self._on_alert_acknowledge,
             on_close_callback=self._on_alert_close
         )
-        logging.info(f"Alert shown for available slot: {slot_id}")
+        logging.info(f"Alert window shown for available slot: {slot_id}")
 
     def _on_alert_acknowledge(self, slot_id):
         if slot_id in self.selected_slots:
