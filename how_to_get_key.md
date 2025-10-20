@@ -18,6 +18,7 @@ Setting->POP3/SMTP/IMAP
 ![set_smtp_2](./asset/set_smtp.png)
 ## 5. Configure Your Email Client or Script  
 Write the following personal data to **secret.yaml**, and do not share it with others.
+You can rename `secret.yaml.example` to `secret.yaml`.
 
 | Setting        | Value                    |
 |----------------|--------------------------|
