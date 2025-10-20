@@ -77,7 +77,7 @@ class TimedAlert(tk.Toplevel):
         self._start_countdown()
 
         # 3. Defer grab_set to prevent the main window from freezing on some OS.
-        self.after(100, self.grab_set)
+        self.after(500, self.grab_set)
 
         # 4. (Recommended) After 1 second, turn off the 'topmost' attribute.
         # The window will still be modal and on top of the parent app,
