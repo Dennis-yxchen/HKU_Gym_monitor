@@ -18,4 +18,5 @@ You should install the following libraries:
 ```
 pip install beautifulsoup4 requests
 pip install Pillow
+pip install plyer
 ```
